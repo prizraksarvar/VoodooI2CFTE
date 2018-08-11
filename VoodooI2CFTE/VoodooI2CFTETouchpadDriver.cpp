@@ -184,10 +184,10 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
     if (reportData[ETP_REPORT_ID_OFFSET] != ETP_REPORT_ID) {
         
         IOLog("%s::%s Invalid report (%d)\n", getName(), device_name, reportData[ETP_REPORT_ID_OFFSET]);
-        for (int i = 0; i < ETP_MAX_REPORT_LEN; i++) {
+        /*for (int i = 0; i < ETP_MAX_REPORT_LEN; i++) {
             IOLog("%d ", reportData[i]);
         }
-        IOLog("\n");
+        IOLog("\n");*/
         return kIOReturnError;
     }
     
@@ -204,11 +204,11 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
     if (timestamp_ns - keytime < maxaftertyping)
         return kIOReturnSuccess;
     
-    IOLog("%s::%s report recived (%d)\n", getName(), device_name, reportData[ETP_REPORT_ID_OFFSET]);
+    /*IOLog("%s::%s report recived (%d)\n", getName(), device_name, reportData[ETP_REPORT_ID_OFFSET]);
     for (int i = 0; i < ETP_MAX_REPORT_LEN; i++) {
         IOLog("%d ", reportData[i]);
     }
-    IOLog("\n");
+    IOLog("\n");*/
     
     UInt8* finger_data = &reportData[ETP_FINGER_DATA_OFFSET];
     UInt8 tp_info = reportData[ETP_TOUCH_INFO_OFFSET];
@@ -224,6 +224,8 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
         bool isPalm = false;
         if (contactValid) {
             isPalm = ((finger_data[3] & 0x80)>0) || ((finger_data[4] & 0x80)>0); //7bit is 1 - Palm?
+            
+            //If don't need remove code
             if (isPalm && ((finger_data[3] >> 4) & 0x08)==0x08 && ((finger_data[3]) & 0x0f)==0x0f) {
                 isPalm = true;
             } else {
