@@ -16,20 +16,6 @@ OSDefineMetaClassAndStructors(VoodooI2CFTETouchpadDriver, IOService);
 
 bool VoodooI2CFTETouchpadDriver::check_ASUS_firmware(UInt8 productId, UInt8 ic_type) {
     return true;
-    IOLog("TOUCHPAD TEST1\n");
-    if (ic_type == 0x0E) {
-        switch (productId) {
-            case 0x05 ... 0x07:
-            case 0x09:
-            case 0x13:
-                return true;
-        }
-    } else if (ic_type == 0x08 && productId == 0x26) {
-        IOLog("TOUCHPAD TEST3\n");
-        return true;
-    }
-    IOLog("TOUCHPAD TEST2\n");
-    return false;
 }
 
 void VoodooI2CFTETouchpadDriver::free() {
@@ -46,7 +32,6 @@ void VoodooI2CFTETouchpadDriver::handle_input_threaded() {
 }
 
 bool VoodooI2CFTETouchpadDriver::init(OSDictionary *properties) {
-    IOLog("START INIT TOUCHPAD3\n");
     transducers = NULL;
     if (!super::init(properties)) {
         return false;
@@ -68,37 +53,34 @@ bool VoodooI2CFTETouchpadDriver::init(OSDictionary *properties) {
 }
 
 bool VoodooI2CFTETouchpadDriver::init_device() {
-    IOLog("%s::%s TEST INFO3\n", getName(), device_name);
     if (!reset_device()) {
-        IOLog("RESET FAIL\n");
         return false;
     }
     
-    IOLog("RESET OK\n");
     IOReturn retVal;
     UInt8 val[3];
     
     UInt32 max_report_x = 0;
     UInt32 max_report_y = 0;
 
-    /*retVal = read_FTE_cmd(ETP_I2C_FW_VERSION_CMD, val);
+    retVal = read_FTE_cmd(ETP_I2C_FW_VERSION_CMD, val);
     if (retVal != kIOReturnSuccess) {
         IOLog("%s::%s Failed to get version cmd\n", getName(), device_name);
         return false;
-    }*/
-    UInt8 version = 0x0000;//val[0];
-    /*retVal = read_FTE_cmd(ETP_I2C_FW_CHECKSUM_CMD, val);
+    }
+    UInt8 version = 0;//val[0];
+    retVal = read_FTE_cmd(ETP_I2C_FW_CHECKSUM_CMD, val);
     if (retVal != kIOReturnSuccess) {
         IOLog("%s::%s Failed to get checksum cmd\n", getName(), device_name);
         return false;
-    }*/
-    UInt16 csum = 0x0000;//*reinterpret_cast<UInt16 *>(val);
-    /*retVal = read_FTE_cmd(ETP_I2C_IAP_VERSION_CMD, val);
+    }
+    UInt16 csum = 0;//*reinterpret_cast<UInt16 *>(val);
+    retVal = read_FTE_cmd(ETP_I2C_IAP_VERSION_CMD, val);
     if (retVal != kIOReturnSuccess) {
         IOLog("%s::%s Failed to get IAP version cmd\n", getName(), device_name);
         return false;
-    }*/
-    UInt8 iapversion = 0x0000;//val[0];
+    }
+    UInt8 iapversion = 0;//val[0];
     /*retVal = read_FTE_cmd(ETP_I2C_PRESSURE_CMD, val);
     if (retVal != kIOReturnSuccess) {
         IOLog("%s::%s Failed to get pressure cmd\n", getName(), device_name);
@@ -107,12 +89,12 @@ bool VoodooI2CFTETouchpadDriver::init_device() {
     if ((val[0] >> 4) & 0x1)
         pressure_adjustment = 0;
     else
-        pressure_adjustment = ETP_PRESSURE_OFFSET;
+        pressure_adjustment = ETP_PRESSURE_OFFSET;*/
     retVal = read_FTE_cmd(ETP_I2C_MAX_X_AXIS_CMD, val);
     if (retVal != kIOReturnSuccess) {
         IOLog("%s::%s Failed to get max X axis cmd\n", getName(), device_name);
         return false;
-    }*/
+    }
     max_report_x = 0x0aea;//(*(reinterpret_cast<UInt16 *>(val))) & 0x0fff;
 
     /*retVal = read_FTE_cmd(ETP_I2C_MAX_Y_AXIS_CMD, val);
@@ -169,6 +151,7 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
         IOLog("%s::%s API is null\n", getName(), device_name);
         return kIOReturnError;
     }
+    
     UInt8 reportData[ETP_MAX_REPORT_LEN];
     for (int i = 0; i < ETP_MAX_REPORT_LEN; i++) {
         reportData[i] = 0;
@@ -184,10 +167,6 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
     if (reportData[ETP_REPORT_ID_OFFSET] != ETP_REPORT_ID) {
         
         IOLog("%s::%s Invalid report (%d)\n", getName(), device_name, reportData[ETP_REPORT_ID_OFFSET]);
-        /*for (int i = 0; i < ETP_MAX_REPORT_LEN; i++) {
-            IOLog("%d ", reportData[i]);
-        }
-        IOLog("\n");*/
         return kIOReturnError;
     }
     
@@ -203,12 +182,6 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
     
     if (timestamp_ns - keytime < maxaftertyping)
         return kIOReturnSuccess;
-    
-    /*IOLog("%s::%s report recived (%d)\n", getName(), device_name, reportData[ETP_REPORT_ID_OFFSET]);
-    for (int i = 0; i < ETP_MAX_REPORT_LEN; i++) {
-        IOLog("%d ", reportData[i]);
-    }
-    IOLog("\n");*/
     
     UInt8* finger_data = &reportData[ETP_FINGER_DATA_OFFSET];
     UInt8 tp_info = reportData[ETP_TOUCH_INFO_OFFSET];
@@ -256,19 +229,9 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
                 area_y = mk_y * (transducer->logical_max_y - ETP_FWIDTH_REDUCE);*/
             }
             
-            /*unsigned int major = mk_x;
-            unsigned int minor = mk_y;
-            if(mk_x < mk_y) {
-                major = mk_y;
-                minor = mk_x;
-            }*/
             if(pressure > ETP_MAX_PRESSURE) {
                 pressure = ETP_MAX_PRESSURE;
             }
-            /*if (isPalm && touchMajor==MAX_PRESSURE && touchPpp==0x0f) {
-                posX = transducer->coordinates.x.last.value;
-                posY = transducer->coordinates.y.last.value;
-            }*/
             transducer->coordinates.x.update(posX, timestamp);
             transducer->coordinates.y.update(posY, timestamp);
             transducer->physical_button.update(tp_info & 0x01, timestamp);
@@ -278,7 +241,6 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
             transducer->pressure_physical_max = ETP_MAX_PRESSURE;
             transducer->tip_pressure.update(pressure, timestamp);
             numFingers += 1;
-            finger_data += ETP_FINGER_DATA_LEN;
         } else {
             transducer->id = i;
             transducer->secondary_id = i;
@@ -289,6 +251,7 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
             transducer->pressure_physical_max = ETP_MAX_PRESSURE;
             transducer->tip_pressure.update(0, timestamp);
         }
+        finger_data += ETP_FINGER_DATA_LEN;
     }
     // create new VoodooI2CMultitouchEvent
     VoodooI2CMultitouchEvent event;
@@ -335,7 +298,6 @@ VoodooI2CFTETouchpadDriver* VoodooI2CFTETouchpadDriver::probe(IOService* provide
 }
 
 bool VoodooI2CFTETouchpadDriver::publish_multitouch_interface() {
-    IOLog("%s::%s TEST INFO5\n", getName(), device_name);
     mt_interface = new VoodooI2CMultitouchInterface();
     if (!mt_interface) {
         IOLog("%s::%s No memory to allocate VoodooI2CMultitouchInterface instance\n", getName(), device_name);
@@ -355,7 +317,10 @@ bool VoodooI2CFTETouchpadDriver::publish_multitouch_interface() {
     }
     // Assume we are a touchpad
     mt_interface->setProperty(kIOHIDDisplayIntegratedKey, false);
-    // 0x2575 is FTE's Vendor Id
+    // ???? is FTE's Vendor Id
+    // 0x04f3 ?
+    // 0x0b05 ?
+    // 0x2575 ?
     mt_interface->setProperty(kIOHIDVendorIDKey, 0x04f3, 32);
     mt_interface->setProperty(kIOHIDProductIDKey, product_id, 32);
     return true;
@@ -384,31 +349,37 @@ IOReturn VoodooI2CFTETouchpadDriver::read_raw_16bit_data(UInt16 reg, size_t len,
 }
 
 bool VoodooI2CFTETouchpadDriver::reset_device() {
-    /*IOLog("%s::%s TEST RESET DEVICE\n", getName(), device_name);
     IOReturn retVal = kIOReturnSuccess;
+    UInt8 val[256];
+    retVal = read_raw_16bit_data(ETP_I2C_DESC_CMD, ETP_I2C_DESC_LENGTH, val);
+    if (retVal != kIOReturnSuccess) {
+        IOLog("%s::%s  Failed to get desc cmd\n", getName(), device_name);
+        return false;
+    }
+    retVal = write_FTE_cmd(ETP_I2C_STAND_CMD, ETP_I2C_WAKE_UP);
+    if (retVal != kIOReturnSuccess) {
+        IOLog("%s::%s Failed to send wake up cmd (workaround)\n", getName(), device_name);
+        return false;
+    }
+    IOSleep(200);
     retVal = write_FTE_cmd(ETP_I2C_STAND_CMD, ETP_I2C_RESET);
     if (retVal != kIOReturnSuccess) {
         IOLog("%s::%s Failed to write RESET cmd\n", getName(), device_name);
         return false;
     }
     IOSleep(100);
-    UInt8 val[256];
     UInt8 val2[3];
     retVal = read_raw_data(0x00, ETP_I2C_INF_LENGTH, val);
     if (retVal != kIOReturnSuccess) {
         IOLog("%s::%s Failed to get reset acknowledgement\n", getName(), device_name);
         return false;;
     }
-    retVal = read_raw_16bit_data(ETP_I2C_DESC_CMD, ETP_I2C_DESC_LENGTH, val);
-    if (retVal != kIOReturnSuccess) {
-        IOLog("%s::%s  Failed to get desc cmd\n", getName(), device_name);
-        return false;
-    }
+    /*
     retVal = read_raw_16bit_data(ETP_I2C_REPORT_DESC_CMD, ETP_I2C_REPORT_DESC_LENGTH, val);
     if (retVal != kIOReturnSuccess) {
         IOLog("%s::%s Failed to get report cmd\n", getName(), device_name);
         return false;
-    }
+    }*/
     // get the product ID
     retVal = read_FTE_cmd(ETP_I2C_UNIQUEID_CMD, val2);
     if (retVal != kIOReturnSuccess) {
@@ -416,57 +387,6 @@ bool VoodooI2CFTETouchpadDriver::reset_device() {
         return false;
     }
     product_id = val2[0];
-    retVal = read_FTE_cmd(ETP_I2C_SM_VERSION_CMD, val2);
-    if (retVal != kIOReturnSuccess) {
-        IOLog("%s::%s Failed to get IC type cmd\n", getName(), device_name);
-        return false;
-    }
-    UInt8 ictype = val2[1];
-    if (check_ASUS_firmware(product_id, ictype)) {
-        
-        IOLog("%s::%s ASUS trackpad detected, applying workaround\n", getName(), device_name);
-        retVal = write_FTE_cmd(ETP_I2C_STAND_CMD, ETP_I2C_WAKE_UP);
-        if (retVal != kIOReturnSuccess) {
-            IOLog("%s::%s Failed to send wake up cmd (workaround)\n", getName(), device_name);
-            return false;
-        }
-        IOSleep(200);
-        retVal =  write_FTE_cmd(ETP_I2C_SET_CMD, ETP_ENABLE_ABS);
-        if (retVal != kIOReturnSuccess) {
-            IOLog("%s::%s Failed to send enable cmd (workaround)\n", getName(), device_name);
-            return false;
-        }
-        IOLog("%s::%s TEST RESET AS ASUS\n", getName(), device_name);
-    } else {
-        retVal = write_FTE_cmd(ETP_I2C_SET_CMD, ETP_ENABLE_ABS);
-        if (retVal != kIOReturnSuccess) {
-            IOLog("%s::%s Failed to send enable cmd\n", getName(), device_name);
-            return false;
-        }
-        retVal = write_FTE_cmd(ETP_I2C_STAND_CMD, ETP_I2C_WAKE_UP);
-        if (retVal != kIOReturnSuccess) {
-            IOLog("%s::%s Failed to send wake up cmd\n", getName(), device_name);
-            return false;
-        }
-        IOLog("%s::%s TEST RESET AS OTHER\n", getName(), device_name);
-    }*/
-    
-    /*
-    UInt8 buffer[] {
-        0x0d,
-        0x00,
-        0x03,
-        0x01,
-        0x00
-    };
-    retVal = kIOReturnSuccess;
-    retVal = api->writeI2C(reinterpret_cast<UInt8*>(&buffer), sizeof(buffer));
-    
-    if (retVal != kIOReturnSuccess) {
-        IOLog("%s::%s Failed to send MY INIT MULTITACH\n", getName(), device_name);
-        return false;
-    }*/
-    
     asus_start_multitach();
     
     return true;
@@ -474,52 +394,17 @@ bool VoodooI2CFTETouchpadDriver::reset_device() {
 
 bool VoodooI2CFTETouchpadDriver::asus_start_multitach() {
     IOLog("%s::%s Start multitach enable\n", getName(), device_name);
-    //UInt8 buffer[] { FEATURE_REPORT_ID, 0x00, 0x03, 0x01, 0x00 };
     UInt8 buffer[] { 0x05, 0x00, 0x3d, 0x03, 0x06, 0x00, 0x07, 0x00, 0x0d, 0x00, 0x03, 0x01, 0x00};
     IOReturn retVal = kIOReturnSuccess;
     retVal = api->writeI2C(reinterpret_cast<UInt8*>(&buffer), sizeof(buffer));
-    
-    //UInt8 val[1];
-    //retVal = api->writeReadI2C(buffer, 1, val, 1);
-    
     if (retVal != kIOReturnSuccess) {
-        IOLog("%s::%s Failed to send MY INIT MULTITACH\n", getName(), device_name);
+        IOLog("%s::%s Failed multitouch initialize\n", getName(), device_name);
         return false;
     }
-    return true;
-    
-    //read_in_progress = true;
-    //setHIDPowerState(kVoodooI2CStateOn);
-    
-    //IOSleep(1);
-    
-    /*VoodooI2CHIDDeviceCommand command;
-    command.c.reg = hid_descriptor->wCommandRegister;
-    command.c.opcode = 0x01;
-    command.c.report_type_id = 0;
-    
-    api->writeI2C(command.data, 4);
-    
-    AbsoluteTime absolute_time;
-    
-    // Device is required to complete a host-initiated reset in at most 5 seconds.
-    
-    nanoseconds_to_absolutetime(5000000000, &absolute_time);
-    
-    read_in_progress = false;
-    
-    IOReturn sleep = command_gate->commandSleep(&reset_event, absolute_time);
-    
-    if (sleep == THREAD_TIMED_OUT) {
-        IOLog("%s::%s Timeout waiting for device to complete host initiated reset\n", getName(), name);
-        return kIOReturnTimeout;
-    }*/
-    
-    //return kIOReturnSuccess;
+    return kIOReturnSuccess;
 }
 
 void VoodooI2CFTETouchpadDriver::release_resources() {
-    IOLog("TOUCHPAD TEST5\n");
     if (command_gate) {
         workLoop->removeEventSource(command_gate);
         command_gate->release();
@@ -583,11 +468,9 @@ IOReturn VoodooI2CFTETouchpadDriver::setPowerState(unsigned long longpowerStateO
 }
 
 bool VoodooI2CFTETouchpadDriver::start(IOService* provider) {
-    IOLog("%s::%s TEST START\n", getName(), FTE_name);
     if (!super::start(provider)) {
         return false;
     }
-    IOLog("TOUCHPAD TEST8\n");
     // Read QuietTimeAfterTyping configuration value (if available)
     OSNumber* quietTimeAfterTyping = OSDynamicCast(OSNumber, getProperty("QuietTimeAfterTyping"));
     if (quietTimeAfterTyping != NULL)
@@ -632,10 +515,8 @@ bool VoodooI2CFTETouchpadDriver::start(IOService* provider) {
     IOLog("%s::%s VoodooI2CFTE has started\n", getName(), FTE_name);
     mt_interface->registerService();
     registerService();
-    IOLog("%s::%s TEST START OK\n", getName(), FTE_name);
     return true;
 start_exit:
-    IOLog("%s::%s TEST START FAIL\n", getName(), FTE_name);
     release_resources();
     return false;
 }

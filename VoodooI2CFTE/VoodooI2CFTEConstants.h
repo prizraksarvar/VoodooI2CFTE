@@ -10,12 +10,6 @@
 
 
 
-#define MY_FTE_CMD 0x0d00
-#define MY_FTE_VAL 0x0310
-
-#define MY_FTE_INIT 0x0d00030100
-
-
 /* FTE found commands */
 #define ETP_I2C_RESET 0x0100
 #define ETP_I2C_WAKE_UP 0x0800
