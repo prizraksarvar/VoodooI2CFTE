@@ -122,8 +122,8 @@ bool VoodooI2CFTETouchpadDriver::init_device() {
 
     IOLog("%s::%s ProdID: %d Vers: %d Csum: %d IAPVers: %d Max X: %d Max Y: %d\n", getName(), device_name, product_id, version, csum, iapversion, max_report_x, max_report_y);
     if (mt_interface) {
-        mt_interface->physical_max_x = max_report_x * 10 / hw_res_x;
-        mt_interface->physical_max_y = max_report_y * 10 / hw_res_y;
+        mt_interface->physical_max_x = max_report_x;//max_report_x * 10 / hw_res_x;
+        mt_interface->physical_max_y = max_report_y;//max_report_y * 10 / hw_res_y;
         mt_interface->logical_max_x = max_report_x;
         mt_interface->logical_max_y = max_report_y;
     }
@@ -185,6 +185,7 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
     
     UInt8* finger_data = &reportData[ETP_FINGER_DATA_OFFSET];
     UInt8 tp_info = reportData[ETP_TOUCH_INFO_OFFSET];
+    
     int numFingers = 0;
     for (int i = 0; i < ETP_MAX_FINGERS; i++) {
         VoodooI2CDigitiserTransducer* transducer = OSDynamicCast(VoodooI2CDigitiserTransducer,  transducers->getObject(i));
@@ -192,28 +193,24 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
         if (!transducer) {
             continue;
         }
-        //bool contactValid = tp_info & (1U << (3 + i));
-        bool contactValid = tp_info & (0x08 << i);
+        bool contactValid = tp_info & (1U << (3 + i));
+        //bool contactValid = tp_info & (0x08 << i);
         bool isPalm = false;
         if (contactValid) {
-            isPalm = ((finger_data[3] & 0x80)>0) || ((finger_data[4] & 0x80)>0); //7bit is 1 - Palm?
+            unsigned int touchMajor = finger_data[3] >> 4 & 0x07;
+            //unsigned int touchPpp = finger_data[3] & 0x0f;
             
-            //If don't need remove code
-            if (isPalm && ((finger_data[3] >> 4) & 0x08)==0x08 && ((finger_data[3]) & 0x0f)==0x0f) {
-                isPalm = true;
-            } else {
-                isPalm = false;
-            }
+            isPalm = touchMajor>5;
+            
         }
         transducer->is_valid = contactValid;
         if (contactValid && !isPalm) {
             unsigned int posX = ((finger_data[0] & 0xf0) << 4) | finger_data[1];
             unsigned int posY = ((finger_data[0] & 0x0f) << 8) | finger_data[2];
             
-            
-            /*unsigned int touchMajor = !isPalm ? (finger_data[3] >> 4) & 0x07 : MAX_TOUCH_MAJOR;
-            unsigned int touchPpp = !isPalm ? (finger_data[3]) & 0x0f : 0x0f;*/
-            unsigned int pressure = !isPalm ? finger_data[4] & 0x7f : MAX_PRESSURE;
+            //unsigned int touchMajor = finger_data[3] >> 4 & 0x07;
+            //unsigned int touchPpp = finger_data[3] & 0x0f;
+            unsigned int pressure = finger_data[4] & 0x7f;
             
             //unsigned int pressure = finger_data[4] + pressure_adjustment;
             /*unsigned int mk_x = (finger_data[3] & 0x0f);
@@ -238,8 +235,8 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
             transducer->tip_switch.update(1, timestamp);
             transducer->id = i;
             transducer->secondary_id = i;
-            transducer->pressure_physical_max = ETP_MAX_PRESSURE;
-            transducer->tip_pressure.update(pressure, timestamp);
+            //transducer->pressure_physical_max = ETP_MAX_PRESSURE;
+            //transducer->tip_pressure.update(pressure, timestamp);
             numFingers += 1;
         } else {
             transducer->id = i;
@@ -248,9 +245,10 @@ IOReturn VoodooI2CFTETouchpadDriver::parse_FTE_report() {
             transducer->coordinates.y.update(transducer->coordinates.y.last.value, timestamp);
             transducer->physical_button.update(0, timestamp);
             transducer->tip_switch.update(0, timestamp);
-            transducer->pressure_physical_max = ETP_MAX_PRESSURE;
-            transducer->tip_pressure.update(0, timestamp);
+            //transducer->pressure_physical_max = ETP_MAX_PRESSURE;
+            //transducer->tip_pressure.update(0, timestamp);
         }
+        
         finger_data += ETP_FINGER_DATA_LEN;
     }
     // create new VoodooI2CMultitouchEvent
