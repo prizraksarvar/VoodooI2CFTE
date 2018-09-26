@@ -7,16 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		121121F8211EE33700636480 /* FTE1001-master in Resources */ = {isa = PBXBuildFile; fileRef = 121121F7211EE33700636480 /* FTE1001-master */; };
 		7B30D6A41F91262100190488 /* VoodooI2CFTETouchpadDriver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7B30D6A21F91262100190488 /* VoodooI2CFTETouchpadDriver.cpp */; };
 		7B30D6A51F91262100190488 /* VoodooI2CFTETouchpadDriver.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 7B30D6A31F91262100190488 /* VoodooI2CFTETouchpadDriver.hpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		121121F7211EE33700636480 /* FTE1001-master */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "FTE1001-master"; sourceTree = "<group>"; };
-		1217D1A3211B8ADD0060DDDF /* hid-asus.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "hid-asus.c"; sourceTree = "<group>"; };
-		1217D1A4211B8ADD0060DDDF /* hid-ids.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "hid-ids.h"; sourceTree = "<group>"; };
-		1217D1A5211B8ADD0060DDDF /* i2c-hid.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "i2c-hid.c"; sourceTree = "<group>"; };
 		7B30D6871F910BAB00190488 /* VoodooI2CFTE.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoodooI2CFTE.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B30D68E1F910BAB00190488 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		7B30D6A21F91262100190488 /* VoodooI2CFTETouchpadDriver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoodooI2CFTETouchpadDriver.cpp; sourceTree = "<group>"; };
@@ -37,16 +32,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		1217D1A2211B8AA90060DDDF /* DriverSRC */ = {
-			isa = PBXGroup;
-			children = (
-				1217D1A3211B8ADD0060DDDF /* hid-asus.c */,
-				1217D1A4211B8ADD0060DDDF /* hid-ids.h */,
-				1217D1A5211B8ADD0060DDDF /* i2c-hid.c */,
-			);
-			path = DriverSRC;
-			sourceTree = "<group>";
-		};
 		7B30D67D1F910BAB00190488 = {
 			isa = PBXGroup;
 			children = (
@@ -67,8 +52,6 @@
 		7B30D6891F910BAB00190488 /* VoodooI2CFTE */ = {
 			isa = PBXGroup;
 			children = (
-				121121F7211EE33700636480 /* FTE1001-master */,
-				1217D1A2211B8AA90060DDDF /* DriverSRC */,
 				7B30D68E1F910BAB00190488 /* Info.plist */,
 				7B30D6A21F91262100190488 /* VoodooI2CFTETouchpadDriver.cpp */,
 				7B5723661F927D1400A672B5 /* VoodooI2CFTEConstants.h */,
@@ -108,6 +91,7 @@
 				7B30D6831F910BAB00190488 /* Frameworks */,
 				7B30D6841F910BAB00190488 /* Headers */,
 				7B30D6851F910BAB00190488 /* Resources */,
+				121060FE21577A8F00CA19A9 /* Linting */,
 			);
 			buildRules = (
 			);
@@ -155,11 +139,28 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				121121F8211EE33700636480 /* FTE1001-master in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		121060FE21577A8F00CA19A9 /* Linting */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = Linting;
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "cpplint --recursive --filter=-build/header_guard,-whitespace/line_length,-runtime/int ./";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		7B30D6821F910BAB00190488 /* Sources */ = {
