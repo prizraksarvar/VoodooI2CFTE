@@ -14,7 +14,44 @@
 #define super IOService
 OSDefineMetaClassAndStructors(VoodooI2CFTETouchpadDriver, IOService);
 
+bool VoodooI2CFTETouchpadDriver::init(OSDictionary *properties) {
+    transducers = NULL;
+    if (!super::init(properties)) {
+        return false;
+    }
+
+    interrupt_simulator = NULL;
+
+    transducers = OSArray::withCapacity(ETP_MAX_FINGERS);
+    if (!transducers) {
+        return false;
+    }
+    DigitiserTransducerType type = kDigitiserTransducerFinger;
+    for (int i = 0; i < ETP_MAX_FINGERS; i++) {
+        VoodooI2CDigitiserTransducer* transducer = VoodooI2CDigitiserTransducer::transducer(type, NULL);
+        transducers->setObject(transducer);
+        OSSafeReleaseNULL(transducer);
+    }
+
+    // Allocate the multitouch interface
+    mt_interface = OSTypeAlloc(VoodooI2CMultitouchInterface);
+    if (!mt_interface) {
+        IOLog("%s::%s No memory to allocate VoodooI2CMultitouchInterface instance\n", getName(), device_name);
+        return false;
+    }
+
+    awake = true;
+    ready_for_input = false;
+    read_in_progress = false;
+    strncpy(FTE_name, FTE_NAME, strlen(FTE_NAME));
+    return true;
+}
+
 void VoodooI2CFTETouchpadDriver::free() {
+    OSSafeReleaseNULL(transducers);
+
+    OSSafeReleaseNULL(mt_interface);
+
     IOLog("%s::%s VoodooI2CFTE resources have been deallocated\n", getName(), FTE_name);
     super::free();
 }
@@ -25,27 +62,6 @@ void VoodooI2CFTETouchpadDriver::handleInputThreaded() {
     }
     command_gate->attemptAction(OSMemberFunctionCast(IOCommandGate::Action, this, &VoodooI2CFTETouchpadDriver::parseFTEReport));
     read_in_progress = false;
-}
-
-bool VoodooI2CFTETouchpadDriver::init(OSDictionary *properties) {
-    transducers = NULL;
-    if (!super::init(properties)) {
-        return false;
-    }
-    transducers = OSArray::withCapacity(ETP_MAX_FINGERS);
-    if (!transducers) {
-        return false;
-    }
-    DigitiserTransducerType type = kDigitiserTransducerFinger;
-    for (int i = 0; i < ETP_MAX_FINGERS; i++) {
-        VoodooI2CDigitiserTransducer* transducer = VoodooI2CDigitiserTransducer::transducer(type, NULL);
-        transducers->setObject(transducer);
-    }
-    awake = true;
-    ready_for_input = false;
-    read_in_progress = false;
-    strncpy(FTE_name, FTE_NAME, strlen(FTE_NAME));
-    return true;
 }
 
 bool VoodooI2CFTETouchpadDriver::initDevice() {
@@ -128,10 +144,9 @@ bool VoodooI2CFTETouchpadDriver::initDevice() {
 }
 
 void VoodooI2CFTETouchpadDriver::interruptOccurred(OSObject* owner, IOInterruptEventSource* src, int intCount) {
-    if (read_in_progress)
+    if (read_in_progress || !awake)
         return;
-    if (!awake)
-        return;
+
     read_in_progress = true;
     thread_t new_thread;
     kern_return_t ret = kernel_thread_start(OSMemberFunctionCast(thread_continue_t, this, &VoodooI2CFTETouchpadDriver::handleInputThreaded), this, &new_thread);
@@ -150,9 +165,8 @@ IOReturn VoodooI2CFTETouchpadDriver::parseFTEReport() {
     }
 
     UInt8 report_data[ETP_MAX_REPORT_LEN];
-    for (int i = 0; i < ETP_MAX_REPORT_LEN; i++) {
-        report_data[i] = 0;
-    }
+    memset(&report_data, 0, sizeof(report_data));
+
     IOReturn ret_val = readRawData(0, sizeof(report_data), report_data);
     if (ret_val != kIOReturnSuccess) {
         IOLog("%s::%s Failed to handle input\n", getName(), device_name);
@@ -161,8 +175,14 @@ IOReturn VoodooI2CFTETouchpadDriver::parseFTEReport() {
     if (!transducers) {
         return kIOReturnBadArgument;
     }
-    if (report_data[ETP_REPORT_ID_OFFSET] != ETP_REPORT_ID) {
-        IOLog("%s::%s Invalid report (%d)\n", getName(), device_name, report_data[ETP_REPORT_ID_OFFSET]);
+
+    UInt8 report_id = report_data[ETP_REPORT_ID_OFFSET];
+    if (report_id != ETP_REPORT_ID) {
+        // Ignore 0xFF reports
+        if (report_id == 0xFF)  // TODO(prizraksarvar): check it's need???
+            return kIOReturnSuccess;
+
+        IOLog("%s::%s Invalid report (%d)\n", getName(), device_name, report_id);
         return kIOReturnError;
     }
 
@@ -179,9 +199,9 @@ IOReturn VoodooI2CFTETouchpadDriver::parseFTEReport() {
     if (timestamp_ns - keytime < maxaftertyping)
         return kIOReturnSuccess;
 
+
     UInt8* finger_data = &report_data[ETP_FINGER_DATA_OFFSET];
     UInt8 tp_info = report_data[ETP_TOUCH_INFO_OFFSET];
-
     int num_fingers = 0;
     for (int i = 0; i < ETP_MAX_FINGERS; i++) {
         VoodooI2CDigitiserTransducer* transducer = OSDynamicCast(VoodooI2CDigitiserTransducer,  transducers->getObject(i));
@@ -190,40 +210,18 @@ IOReturn VoodooI2CFTETouchpadDriver::parseFTEReport() {
             continue;
         }
         bool contact_valid = tp_info & (1U << (3 + i));
-        // bool contactValid = tp_info & (0x08 << i);
-        bool is_palm = false;
-        if (contact_valid) {
-            unsigned int touch_major = finger_data[3] >> 4 & 0x07;
-            // unsigned int touchPpp = finger_data[3] & 0x0f;
-
-            is_palm = touch_major > 5;
-        }
         transducer->is_valid = contact_valid;
-        if (contact_valid && !is_palm) {
+        // bool contactValid = tp_info & (0x08 << i);
+        if (contact_valid) {
             unsigned int pos_x = ((finger_data[0] & 0xf0) << 4) | finger_data[1];
             unsigned int pos_y = ((finger_data[0] & 0x0f) << 8) | finger_data[2];
-
-            // unsigned int touchMajor = finger_data[3] >> 4 & 0x07;
-            // unsigned int touchPpp = finger_data[3] & 0x0f;
-            unsigned int pressure = finger_data[4] & 0x7f;
-
-            // unsigned int pressure = finger_data[4] + pressure_adjustment;
-            /*unsigned int mk_x = (finger_data[3] & 0x0f);
-            unsigned int mk_y = (finger_data[3] >> 4);*/
-            /*unsigned int area_x = mk_x;
-            unsigned int area_y = mk_y;*/
 
             if (mt_interface) {
                 transducer->logical_max_x = mt_interface->logical_max_x;
                 transducer->logical_max_y = mt_interface->logical_max_y;
-                pos_y = transducer->logical_max_y - pos_y - 65535;
-                /*area_x = mk_x * (transducer->logical_max_x - ETP_FWIDTH_REDUCE);
-                area_y = mk_y * (transducer->logical_max_y - ETP_FWIDTH_REDUCE);*/
+                pos_y = transducer->logical_max_y - pos_y;
             }
 
-            if (pressure > ETP_MAX_PRESSURE) {
-                pressure = ETP_MAX_PRESSURE;
-            }
             transducer->coordinates.x.update(pos_x, timestamp);
             transducer->coordinates.y.update(pos_y, timestamp);
             transducer->physical_button.update(tp_info & 0x01, timestamp);
@@ -233,6 +231,7 @@ IOReturn VoodooI2CFTETouchpadDriver::parseFTEReport() {
             // transducer->pressure_physical_max = ETP_MAX_PRESSURE;
             // transducer->tip_pressure.update(pressure, timestamp);
             num_fingers += 1;
+
         } else {
             transducer->id = i;
             transducer->secondary_id = i;
@@ -246,6 +245,8 @@ IOReturn VoodooI2CFTETouchpadDriver::parseFTEReport() {
 
         finger_data += ETP_FINGER_DATA_LEN;
     }
+
+
     // create new VoodooI2CMultitouchEvent
     VoodooI2CMultitouchEvent event;
     event.contact_count = num_fingers;
@@ -291,22 +292,23 @@ VoodooI2CFTETouchpadDriver* VoodooI2CFTETouchpadDriver::probe(IOService* provide
 }
 
 bool VoodooI2CFTETouchpadDriver::publishMultitouchInterface() {
-    mt_interface = new VoodooI2CMultitouchInterface();
-    if (!mt_interface) {
+    // mt_interface = new VoodooI2CMultitouchInterface();
+    /*if (!mt_interface) {
         IOLog("%s::%s No memory to allocate VoodooI2CMultitouchInterface instance\n", getName(), device_name);
         goto multitouch_exit;
-    }
+    }*/
     if (!mt_interface->init(NULL)) {
         IOLog("%s::%s Failed to init multitouch interface\n", getName(), device_name);
-        goto multitouch_exit;
+        return false;
     }
     if (!mt_interface->attach(this)) {
         IOLog("%s::%s Failed to attach multitouch interface\n", getName(), device_name);
-        goto multitouch_exit;
+        return false;
     }
     if (!mt_interface->start(this)) {
         IOLog("%s::%s Failed to start multitouch interface\n", getName(), device_name);
-        goto multitouch_exit;
+        mt_interface->detach(this);
+        return false;
     }
     // Assume we are a touchpad
     mt_interface->setProperty(kIOHIDDisplayIntegratedKey, false);
@@ -317,9 +319,9 @@ bool VoodooI2CFTETouchpadDriver::publishMultitouchInterface() {
     mt_interface->setProperty(kIOHIDVendorIDKey, 0x04f3, 32);
     mt_interface->setProperty(kIOHIDProductIDKey, product_id, 32);
     return true;
-multitouch_exit:
+/*multitouch_exit:
     unpublishMultitouchInterface();
-    return false;
+    return false;*/
 }
 
 IOReturn VoodooI2CFTETouchpadDriver::readFTECmd(UInt16 reg, UInt8* val) {
@@ -400,31 +402,38 @@ bool VoodooI2CFTETouchpadDriver::asus_start_multitach() {
 void VoodooI2CFTETouchpadDriver::releaseResources() {
     if (command_gate) {
         work_loop->removeEventSource(command_gate);
-        command_gate->release();
-        command_gate = NULL;
+        OSSafeReleaseNULL(command_gate);
     }
     if (interrupt_source) {
         interrupt_source->disable();
         work_loop->removeEventSource(interrupt_source);
-        interrupt_source->release();
-        interrupt_source = NULL;
+        OSSafeReleaseNULL(interrupt_source);
     }
-    if (work_loop) {
+    if (interrupt_simulator) {
+        interrupt_simulator->disable();
+        work_loop->removeEventSource(interrupt_simulator);
+        OSSafeReleaseNULL(interrupt_simulator);
+    }
+
+    OSSafeReleaseNULL(work_loop);
+    OSSafeReleaseNULL(acpi_device);
+    /*if (work_loop) {
         work_loop->release();
         work_loop = NULL;
     }
+
     if (acpi_device) {
         acpi_device->release();
         acpi_device = NULL;
-    }
+    }*/
     if (api) {
         if (api->isOpen(this)) {
             api->close(this);
         }
-        api->release();
-        api = NULL;
+        // api->release();
+        api = nullptr;
     }
-    if (transducers) {
+    /*if (transducers) {
         for (int i = 0; i < transducers->getCount(); i++) {
             OSObject* object = transducers->getObject(i);
             if (object) {
@@ -432,7 +441,7 @@ void VoodooI2CFTETouchpadDriver::releaseResources() {
             }
         }
         OSSafeReleaseNULL(transducers);
-    }
+    }*/
 }
 
 IOReturn VoodooI2CFTETouchpadDriver::setPowerState(unsigned long longpower_state_ordinal, IOService* what_device) {
@@ -481,7 +490,7 @@ bool VoodooI2CFTETouchpadDriver::start(IOService* provider) {
         goto start_exit;
     }
     acpi_device->retain();
-    api->retain();
+    // api->retain();
     if (!api->open(this)) {
         IOLog("%s::%s Could not open API\n", getName(), FTE_name);
         goto start_exit;
@@ -490,21 +499,35 @@ bool VoodooI2CFTETouchpadDriver::start(IOService* provider) {
     interrupt_source = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventAction, this, &VoodooI2CFTETouchpadDriver::interruptOccurred), api, 0);
     if (!interrupt_source) {
         IOLog("%s::%s Could not get interrupt event source\n", getName(), FTE_name);
-        goto start_exit;
+        interrupt_simulator = IOTimerEventSource::timerEventSource(this, OSMemberFunctionCast(IOTimerEventSource::Action, this, &VoodooI2CFTETouchpadDriver::simulateInterrupt));
+        if (!interrupt_simulator) {
+            IOLog("%s::%s Could not get timer event source\n", getName(), FTE_name);
+            goto start_exit;
+        }
+        publishMultitouchInterface();
+        if (!initDevice()) {
+            IOLog("%s::%s Failed to init device\n", getName(), FTE_name);
+            goto start_exit;
+        }
+        work_loop->addEventSource(interrupt_simulator);
+        interrupt_simulator->setTimeoutMS(200);
+        IOLog("%s::%s Polling mode initialisation succeeded.", getName(), FTE_name);
+    } else {
+        publishMultitouchInterface();
+        if (!initDevice()) {
+            IOLog("%s::%s Failed to init device\n", getName(), FTE_name);
+            goto start_exit;
+        }
+        work_loop->addEventSource(interrupt_source);
+        interrupt_source->enable();
     }
-    publishMultitouchInterface();
-    if (!initDevice()) {
-        IOLog("%s::%s Failed to init device\n", getName(), FTE_name);
-        return NULL;
-    }
-    work_loop->addEventSource(interrupt_source);
-    interrupt_source->enable();
+
     PMinit();
     api->joinPMtree(this);
     registerPowerDriver(this, VoodooI2CIOPMPowerStates, kVoodooI2CIOPMNumberPowerStates);
     IOSleep(100);
     ready_for_input = true;
-    setProperty("VoodooI2CServices Supported", OSBoolean::withBoolean(true));
+    setProperty("VoodooI2CServices Supported", kOSBooleanTrue);
     IOLog("%s::%s VoodooI2CFTE has started\n", getName(), FTE_name);
     mt_interface->registerService();
     registerService();
@@ -512,6 +535,11 @@ bool VoodooI2CFTETouchpadDriver::start(IOService* provider) {
 start_exit:
     releaseResources();
     return false;
+}
+
+void VoodooI2CFTETouchpadDriver::simulateInterrupt(OSObject* owner, IOTimerEventSource *timer) {
+    interruptOccurred(owner, NULL, 0);
+    interrupt_simulator->setTimeoutMS(INTERRUPT_SIMULATOR_TIMEOUT);
 }
 
 void VoodooI2CFTETouchpadDriver::stop(IOService* provider) {
@@ -525,6 +553,7 @@ void VoodooI2CFTETouchpadDriver::stop(IOService* provider) {
 void VoodooI2CFTETouchpadDriver::unpublishMultitouchInterface() {
     if (mt_interface) {
         mt_interface->stop(this);
+        mt_interface->detach(this);
         // mt_interface->release();
         // mt_interface = NULL;
     }
@@ -548,13 +577,13 @@ IOReturn VoodooI2CFTETouchpadDriver::message(UInt32 type, IOService* provider, v
 #if DEBUG
             IOLog("%s::getEnabledStatus = %s\n", getName(), ignoreall ? "false" : "true");
 #endif
-            bool* p_result = reinterpret_cast<bool*>(argument);
+            bool* p_result = (bool*)argument;
             *p_result = !ignoreall;
             break;
         }
         case kKeyboardSetTouchStatus:
         {
-            bool enable = *reinterpret_cast<bool*>(argument);
+            bool enable = *((bool*)argument);
 #if DEBUG
             IOLog("%s::setEnabledStatus = %s\n", getName(), enable ? "true" : "false");
 #endif
@@ -568,7 +597,7 @@ IOReturn VoodooI2CFTETouchpadDriver::message(UInt32 type, IOService* provider, v
         case kKeyboardKeyPressTime:
         {
             //  Remember last time key was pressed
-            keytime = *reinterpret_cast<uint64_t*>(argument);
+            keytime = *((uint64_t*)argument);
 #if DEBUG
             IOLog("%s::keyPressed = %llu\n", getName(), keytime);
 #endif

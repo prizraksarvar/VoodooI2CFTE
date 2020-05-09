@@ -10,6 +10,7 @@
 #define VOODOOI2C_FTE_TOUCHPAD_DRIVER_HPP
 
 #include <IOKit/IOService.h>
+#include <IOKit/IOTimerEventSource.h>
 
 #include "../../../VoodooI2C/VoodooI2C/VoodooI2CDevice/VoodooI2CDeviceNub.hpp"
 
@@ -19,6 +20,7 @@
 #include "../../../Dependencies/helpers.hpp"
 
 #define FTE_NAME "FTE"
+#define INTERRUPT_SIMULATOR_TIMEOUT 5
 
 // Message types defined by ApplePS2Keyboard
 enum {
@@ -81,6 +83,8 @@ class VoodooI2CFTETouchpadDriver : public IOService {
     VoodooI2CMultitouchInterface *mt_interface;
     OSArray* transducers;
     IOWorkLoop* work_loop;
+
+    IOTimerEventSource* interrupt_simulator;
 
     bool ignoreall;
     uint64_t maxaftertyping = 500000000;
@@ -174,7 +178,9 @@ class VoodooI2CFTETouchpadDriver : public IOService {
      *
      * @return kIOSuccess if the message is processed
      */
-    virtual IOReturn message(UInt32 type, IOService* provider, void* argument);
+    IOReturn message(UInt32 type, IOService* provider, void* argument) override;
+
+    void simulateInterrupt(OSObject* owner, IOTimerEventSource* timer);
 };
 
 #endif /* VOODOOI2C_FTE_TOUCHPAD_DRIVER_HPP */
