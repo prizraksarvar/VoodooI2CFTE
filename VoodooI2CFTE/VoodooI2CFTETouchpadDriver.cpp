@@ -135,8 +135,8 @@ bool VoodooI2CFTETouchpadDriver::initDevice() {
 
     IOLog("%s::%s ProdID: %d Vers: %d Csum: %d IAPVers: %d Max X: %d Max Y: %d\n", getName(), device_name, product_id, version, csum, iapversion, max_report_x, max_report_y);
     if (mt_interface) {
-        mt_interface->physical_max_x = max_report_x * 0.45;  // max_report_x * 10 / hw_res_x;
-        mt_interface->physical_max_y = max_report_y * 0.45;  // max_report_y * 10 / hw_res_y;
+        mt_interface->physical_max_x = max_report_x;  // max_report_x * 10 / hw_res_x;
+        mt_interface->physical_max_y = max_report_y;  // max_report_y * 10 / hw_res_y;
         mt_interface->logical_max_x = max_report_x;
         mt_interface->logical_max_y = max_report_y;
     }
