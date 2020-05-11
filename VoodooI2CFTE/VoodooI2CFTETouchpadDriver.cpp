@@ -135,8 +135,8 @@ bool VoodooI2CFTETouchpadDriver::initDevice() {
 
     IOLog("%s::%s ProdID: %d Vers: %d Csum: %d IAPVers: %d Max X: %d Max Y: %d\n", getName(), device_name, product_id, version, csum, iapversion, max_report_x, max_report_y);
     if (mt_interface) {
-        mt_interface->physical_max_x = max_report_x;  // max_report_x * 10 / hw_res_x;
-        mt_interface->physical_max_y = max_report_y;  // max_report_y * 10 / hw_res_y;
+        mt_interface->physical_max_x = max_report_x * 0.45;  // max_report_x * 10 / hw_res_x;
+        mt_interface->physical_max_y = max_report_y * 0.45;  // max_report_y * 10 / hw_res_y;
         mt_interface->logical_max_x = max_report_x;
         mt_interface->logical_max_y = max_report_y;
     }
@@ -144,7 +144,7 @@ bool VoodooI2CFTETouchpadDriver::initDevice() {
 }
 
 void VoodooI2CFTETouchpadDriver::interruptOccurred(OSObject* owner, IOInterruptEventSource* src, int intCount) {
-    if (read_in_progress || !awake)
+    if (!ready_for_input || !awake)
         return;
 
     read_in_progress = true;
@@ -156,6 +156,7 @@ void VoodooI2CFTETouchpadDriver::interruptOccurred(OSObject* owner, IOInterruptE
     } else {
         thread_deallocate(new_thread);
     }
+    command_gate->attemptAction(OSMemberFunctionCast(IOCommandGate::Action, this, &VoodooI2CFTETouchpadDriver::parseFTEReport));
 }
 
 IOReturn VoodooI2CFTETouchpadDriver::parseFTEReport() {
@@ -178,8 +179,8 @@ IOReturn VoodooI2CFTETouchpadDriver::parseFTEReport() {
 
     UInt8 report_id = report_data[ETP_REPORT_ID_OFFSET];
     if (report_id != ETP_REPORT_ID) {
-        // Ignore 0xFF reports
-        if (report_id == 0xFF)  // TODO(prizraksarvar): check it's need???
+        // Ignore 0x00 reports
+        if (report_id == 0x00)
             return kIOReturnSuccess;
 
         IOLog("%s::%s Invalid report (%d)\n", getName(), device_name, report_id);
